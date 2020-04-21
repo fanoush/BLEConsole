@@ -8,6 +8,7 @@ using Windows.Devices.Bluetooth.GenericAttributeProfile;
 using System.Reflection;
 using System.Threading;
 using System.Text.RegularExpressions;
+using System.Runtime.InteropServices.WindowsRuntime;
 
 namespace BLEConsole
 {
@@ -37,6 +38,7 @@ namespace BLEConsole
 
         static string _versionInfo;
 
+        static int mtu = 20;
         // Variables for "foreach" loop implementation
         static List<string> _forEachCommands = new List<string>();
         static List<string> _forEachDeviceNames = new List<string>();
@@ -1011,8 +1013,19 @@ namespace BLEConsole
                             var attr = chars.FirstOrDefault(c => c.Name.Equals(useName));
                             if (attr != null && attr.characteristic != null)
                             {
-                                // Write data to characteristic
-                                GattWriteResult result = await attr.characteristic.WriteValueWithResultAsync(buffer);
+                                // Write data to characteristic, split by MTU size
+                                var arr = buffer.ToArray();
+                                GattWriteResult result = null;
+                                while (arr.Length > mtu)
+                                {
+                                    var part = arr.Take(mtu).ToArray();
+                                    arr = arr.Skip(mtu).ToArray();
+                                    result = await attr.characteristic.WriteValueWithResultAsync(part.AsBuffer());
+                                    if (result.Status != GattCommunicationStatus.Success)
+                                        break;
+                                }
+                                if (result==null || result.Status==GattCommunicationStatus.Success)
+                                    result = await attr.characteristic.WriteValueWithResultAsync(arr.AsBuffer());
                                 if (result.Status != GattCommunicationStatus.Success)
                                 {
                                     if (!Console.IsOutputRedirected)
