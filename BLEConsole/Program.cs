@@ -381,7 +381,7 @@ namespace BLEConsole
                 "  quit, q\t\t\t: quit from application\n"+
                 "  verb, v\t\t\t: toggle verbose output (default on when input is console, off when file)\n" +
                 "  list, ls [w]\t\t\t: show available BLE devices\n" +
-                "  open <name> or <#>\t\t: connect to BLE device\n" +
+                "  open <name> or <#> or <mac>\t: connect to BLE device\n" +
                 "  delay <msec>\t\t\t: pause execution for a certain number of milliseconds\n" +
                 "  timeout <sec>\t\t\t: show/change connection timeout, default value is 3 sec\n" +
                 "  close\t\t\t\t: disconnect from currently connected device\n" +
@@ -539,12 +539,15 @@ namespace BLEConsole
         /// <param name="param">optional, 'w' means "wide list"</param>
         static void ListDevices(string param)
         {
-            
-            var names = _deviceList.OrderBy(d => d.Name).Where(d => !string.IsNullOrEmpty(d.Name)).Select(d => d.Name).ToList();
+
+            var devices = _deviceList.OrderBy(d => d.Name).Where(d => !string.IsNullOrEmpty(d.Name)).ToList();
+            var names = devices.Select(d => d.Name).ToList();
+            // mac address is last part of Id after '-'
+            var macs = devices.Select(d => d.Id.Substring(d.Id.LastIndexOf('-') + 1)).ToList();
             if (string.IsNullOrEmpty(param))
             {
                 for (int i = 0; i < names.Count(); i++)
-                    Console.WriteLine($"#{i:00}: {names[i]}");
+                    Console.WriteLine($"#{i:00}: {names[i]} [{macs[i]}]");
             }
             else if (param.Replace("/","").ToLower().Equals("w"))
             {

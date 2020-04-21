@@ -509,7 +509,7 @@ namespace BLEConsole
                 // ... for devices
                 if (collection is List<DeviceInformation>)
                 {
-                    var foundDevices = (collection as List<DeviceInformation>).Where(d => d.Name.ToLower().StartsWith(name.ToLower())).ToList();
+                    var foundDevices = (collection as List<DeviceInformation>).Where(d => d.Name.ToLower().StartsWith(name.ToLower()) || d.Id.IndexOf(name.ToLower())>=0).ToList(); //match name or part of Id - mac address
                     if (foundDevices.Count == 0)
                     {
                         if(!Console.IsOutputRedirected)
