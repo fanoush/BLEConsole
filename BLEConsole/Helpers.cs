@@ -436,6 +436,9 @@ namespace BLEConsole
                 // For text formats, use CryptographicBuffer
                 if (format == DataFormat.ASCII || format == DataFormat.UTF8)
                 {
+                    var sb = new StringBuilder(data);
+                    sb.Replace("\\n", "\n");sb.Replace("\\t", "\t");sb.Replace("\\r", "\r");
+                    data = sb.ToString();
                     return CryptographicBuffer.ConvertStringToBinary(data, BinaryStringEncoding.Utf8);
                 }
                 else
