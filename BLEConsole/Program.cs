@@ -347,7 +347,10 @@ namespace BLEConsole
                     break;
                 case "v":
                 case "verb":
-                    verbose=!verbose;
+                    if (string.IsNullOrEmpty(parameters.Trim()))
+                        verbose=!verbose;
+                    else
+                        verbose = (new[] { "on", "1", "true" }).Contains(parameters.Trim(), StringComparer.OrdinalIgnoreCase);
                     break;
 
                 case "subs":
@@ -379,7 +382,7 @@ namespace BLEConsole
             Console.WriteLine(_versionInfo +
                 "\n  help, ?\t\t\t: show help information\n"+
                 "  quit, q\t\t\t: quit from application\n"+
-                "  verb, v\t\t\t: toggle verbose output (default on when input is console, off when file)\n" +
+                "  verb, v [on/off]\t\t: toggle or set verbose output (default on when input is console, off when file)\n" +
                 "  list, ls [w]\t\t\t: show available BLE devices\n" +
                 "  open <name> or <#> or <mac>\t: connect to BLE device\n" +
                 "  delay <msec>\t\t\t: pause execution for a certain number of milliseconds\n" +
@@ -642,7 +645,7 @@ namespace BLEConsole
             if (!string.IsNullOrEmpty(deviceName))
             {
                 var devs = _deviceList.OrderBy(d => d.Name).Where(d => !string.IsNullOrEmpty(d.Name)).ToList();
-                string foundId = Utilities.GetIdByNameOrNumber(devs, deviceName);
+                string foundId = GetIdByNameOrNumber(devs, deviceName);
 
                 // If device is found, connect to device and enumerate all services
                 if (!string.IsNullOrEmpty(foundId))
@@ -731,7 +734,7 @@ namespace BLEConsole
             {
                 if (!string.IsNullOrEmpty(serviceName))
                 {
-                    string foundName = Utilities.GetIdByNameOrNumber(_services, serviceName);
+                    string foundName = GetIdByNameOrNumber(_services, serviceName);
 
                     // If device is found, connect to device and enumerate all services
                     if (!string.IsNullOrEmpty(foundName))
@@ -766,14 +769,14 @@ namespace BLEConsole
                                     }
                                     else
                                     {
-                                        if (!Console.IsOutputRedirected)
+                                        if (verbose)
                                             Console.WriteLine("Service don't have any characteristic.");
                                         retVal += 1;
                                     }
                                 }
                                 else
                                 {
-                                    if (!Console.IsOutputRedirected)
+                                    if (verbose)
                                         Console.WriteLine("Error accessing service.");
                                     retVal += 1;
                                 }
@@ -781,35 +784,35 @@ namespace BLEConsole
                             // Not granted access
                             else
                             {
-                                if (!Console.IsOutputRedirected)
+                                if (verbose)
                                     Console.WriteLine("Error accessing service.");
                                 retVal += 1;
                             }
                         }
                         catch (Exception ex)
                         {
-                            if (!Console.IsOutputRedirected)
+                            if (verbose)
                                 Console.WriteLine($"Restricted service. Can't read characteristics: {ex.Message}");
                             retVal += 1;
                         }
                     }
                     else
                     {
-                        if (!Console.IsOutputRedirected)
+                        if (verbose)
                             Console.WriteLine("Invalid service name or number");
                         retVal += 1;
                     }
                 }
                 else
                 {
-                    if (!Console.IsOutputRedirected)
+                    if (verbose)
                         Console.WriteLine("Invalid service name or number");
                     retVal += 1;
                 }
             }
             else
             {
-                if (!Console.IsOutputRedirected)
+                if (verbose)
                     Console.WriteLine("Nothing to use, no BLE device connected.");
                 retVal += 1;
             }
@@ -835,7 +838,7 @@ namespace BLEConsole
                     // Do we have parameter is in "service/characteristic" format?
                     if (parts.Length == 2)
                     {
-                        string serviceName = Utilities.GetIdByNameOrNumber(_services, parts[0]);
+                        string serviceName = GetIdByNameOrNumber(_services, parts[0]);
                         charName = parts[1];
 
                         // If device is found, connect to device and enumerate all services
@@ -869,7 +872,7 @@ namespace BLEConsole
                     {
                         if (_selectedService == null)
                         {
-                            if(!Console.IsOutputRedirected)
+                            if(verbose)
                                 Console.WriteLine("No service is selected.");
                         }
                         chars = new List<BluetoothLEAttributeDisplay>(_characteristics);
@@ -879,7 +882,7 @@ namespace BLEConsole
                     // Read characteristic
                     if (chars.Count > 0 && !string.IsNullOrEmpty(charName))
                     {
-                        string useName = Utilities.GetIdByNameOrNumber(chars, charName);
+                        string useName = GetIdByNameOrNumber(chars, charName);
                         var attr = chars.FirstOrDefault(c => c.Name.Equals(useName));
                         if (attr != null && attr.characteristic != null)
                         {
@@ -934,134 +937,136 @@ namespace BLEConsole
         static async Task<int> WriteCharacteristic(string param)
         {
             int retVal = 0;
-            if (_selectedDevice != null)
+            if (_selectedDevice == null)
             {
-                if (!string.IsNullOrEmpty(param))
+                if (verbose)
+                    Console.WriteLine("No BLE device connected.");
+                return 1;
+            }
+            if (string.IsNullOrEmpty(param))
+            {
+                if (verbose)
+                    Console.WriteLine("Missing write data.");
+                return 1;
+            }
+            // First, split data from char name (it should be a second param)
+            var parts = param.Split(' ');
+            if (parts.Length < 2)
+            {
+                if (verbose)
+                    Console.WriteLine("Insufficient data for write, please provide characteristic name and data.");
+                return 1;
+            }
+
+            // Now try to convert data to the byte array by current format
+            string data = param.Substring(parts[0].Length + 1);
+            if (string.IsNullOrEmpty(data))
+            {
+                Console.WriteLine("Insufficient data for write.");
+                retVal += 1;
+                return retVal;
+            }
+            Windows.Storage.Streams.IBuffer buffer = null;
+            try
+            {
+                buffer = Utilities.FormatData(data, _dataFormat);
+            }
+            catch (Exception error)
+            {
+                if (verbose)
+                    Console.WriteLine("Incorrect data format: " + error.Message);
+                return 1;
+            }
+
+            List<BluetoothLEAttributeDisplay> chars = new List<BluetoothLEAttributeDisplay>();
+
+            string charName = string.Empty;
+
+            // Now process service/characteristic names
+            var charNames = parts[0].Split('/');
+
+            // Do we have parameter is in "service/characteristic" format?
+            if (charNames.Length == 2)
+            {
+                string serviceName = GetIdByNameOrNumber(_services, charNames[0]);
+                charName = charNames[1];
+
+                // If device is found, connect to device and enumerate all services
+                if (!string.IsNullOrEmpty(serviceName))
                 {
-                    List<BluetoothLEAttributeDisplay> chars = new List<BluetoothLEAttributeDisplay>();
-
-                    string charName = string.Empty;
-
-                    // First, split data from char name (it should be a second param)
-                    var parts = param.Split(' ');
-                    if (parts.Length < 2)
+                    var attr = _services.FirstOrDefault(s => s.Name.Equals(serviceName));
+                    IReadOnlyList<GattCharacteristic> characteristics = new List<GattCharacteristic>();
+                    try
                     {
-                        Console.WriteLine("Insufficient data for write, please provide characteristic name and data.");
+                        // Ensure we have access to the device.
+                        var accessStatus = await attr.service.RequestAccessAsync();
+                        if (accessStatus == DeviceAccessStatus.Allowed)
+                        {
+                            var result = await attr.service.GetCharacteristicsAsync(BluetoothCacheMode.Uncached);
+                            if (result.Status == GattCommunicationStatus.Success)
+                                characteristics = result.Characteristics;
+                        }
+                        foreach (var c in characteristics)
+                            chars.Add(new BluetoothLEAttributeDisplay(c));
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"Restricted service. Can't read characteristics: {ex.Message}");
                         retVal += 1;
                         return retVal;
                     }
+                }
+            }
+            else if (charNames.Length == 1)
+            {
+                if (_selectedService == null)
+                {
+                    if (verbose)
+                        Console.WriteLine("No service is selected.");
+                    retVal += 1;
+                }
+                chars = new List<BluetoothLEAttributeDisplay>(_characteristics);
+                charName = parts[0];
+            }
 
-                    // Now try to convert data to the byte array by current format
-                    string data = param.Substring(parts[0].Length + 1);
-                    if (string.IsNullOrEmpty(data))
+            // Write characteristic
+            if (chars.Count > 0 && !string.IsNullOrEmpty(charName))
+            {
+                string useName = GetIdByNameOrNumber(chars, charName);
+                var attr = chars.FirstOrDefault(c => c.Name.Equals(useName));
+                if (attr != null && attr.characteristic != null)
+                {
+                    // Write data to characteristic, split by MTU size
+                    var arr = buffer.ToArray();
+                    GattWriteResult result = null;
+                    while (arr.Length > mtu)
                     {
-                        Console.WriteLine("Insufficient data for write.");
-                        retVal += 1;
-                        return retVal;
+                        var part = arr.Take(mtu).ToArray();
+                        arr = arr.Skip(mtu).ToArray();
+                        result = await attr.characteristic.WriteValueWithResultAsync(part.AsBuffer());
+                        if (result.Status != GattCommunicationStatus.Success)
+                            break;
                     }
-                    var buffer = Utilities.FormatData(data, _dataFormat);
-                    if (buffer != null)
+                    if (result == null || result.Status == GattCommunicationStatus.Success)
+                        result = await attr.characteristic.WriteValueWithResultAsync(arr.AsBuffer());
+                    if (result.Status != GattCommunicationStatus.Success)
                     {
-                        // Now process service/characteristic names
-                        var charNames = parts[0].Split('/');
-
-                        // Do we have parameter is in "service/characteristic" format?
-                        if (charNames.Length == 2)
-                        {
-                            string serviceName = Utilities.GetIdByNameOrNumber(_services, charNames[0]);
-                            charName = charNames[1];
-
-                            // If device is found, connect to device and enumerate all services
-                            if (!string.IsNullOrEmpty(serviceName))
-                            {
-                                var attr = _services.FirstOrDefault(s => s.Name.Equals(serviceName));
-                                IReadOnlyList<GattCharacteristic> characteristics = new List<GattCharacteristic>();
-                                try
-                                {
-                                    // Ensure we have access to the device.
-                                    var accessStatus = await attr.service.RequestAccessAsync();
-                                    if (accessStatus == DeviceAccessStatus.Allowed)
-                                    {
-                                        var result = await attr.service.GetCharacteristicsAsync(BluetoothCacheMode.Uncached);
-                                        if (result.Status == GattCommunicationStatus.Success)
-                                            characteristics = result.Characteristics;
-                                    }
-                                    foreach (var c in characteristics)
-                                        chars.Add(new BluetoothLEAttributeDisplay(c));
-                                }
-                                catch (Exception ex)
-                                {
-                                    Console.WriteLine($"Restricted service. Can't read characteristics: {ex.Message}");
-                                    retVal += 1;
-                                    return retVal;
-                                }
-                            }
-                        }
-                        else if (charNames.Length == 1)
-                        {
-                            if (_selectedService == null)
-                            {
-                                if(!Console.IsOutputRedirected)
-                                    Console.WriteLine("No service is selected.");
-                                retVal += 1;
-                            }
-                            chars = new List<BluetoothLEAttributeDisplay>(_characteristics);
-                            charName = parts[0];
-                        }
-
-                        // Write characteristic
-                        if (chars.Count > 0 && !string.IsNullOrEmpty(charName))
-                        {
-                            string useName = Utilities.GetIdByNameOrNumber(chars, charName);
-                            var attr = chars.FirstOrDefault(c => c.Name.Equals(useName));
-                            if (attr != null && attr.characteristic != null)
-                            {
-                                // Write data to characteristic, split by MTU size
-                                var arr = buffer.ToArray();
-                                GattWriteResult result = null;
-                                while (arr.Length > mtu)
-                                {
-                                    var part = arr.Take(mtu).ToArray();
-                                    arr = arr.Skip(mtu).ToArray();
-                                    result = await attr.characteristic.WriteValueWithResultAsync(part.AsBuffer());
-                                    if (result.Status != GattCommunicationStatus.Success)
-                                        break;
-                                }
-                                if (result==null || result.Status==GattCommunicationStatus.Success)
-                                    result = await attr.characteristic.WriteValueWithResultAsync(arr.AsBuffer());
-                                if (result.Status != GattCommunicationStatus.Success)
-                                {
-                                    if (!Console.IsOutputRedirected)
-                                        Console.WriteLine($"Write failed: {result.Status}");
-                                    retVal += 1;
-                                }
-                            }
-                            else
-                            {
-                                if (!Console.IsOutputRedirected)
-                                    Console.WriteLine($"Invalid characteristic {charName}");
-                                retVal += 1;
-                            }
-                        }
-                        else
-                        {
-                            if (!Console.IsOutputRedirected)
-                                Console.WriteLine("Please specify characteristic name or # for writing.");
-                            retVal += 1;
-                        }
-                    }
-                    else
-                    {
-                        if (!Console.IsOutputRedirected)
-                            Console.WriteLine("Incorrect data format.");
+                        if (verbose)
+                            Console.WriteLine($"Write failed: {result.Status}");
                         retVal += 1;
                     }
+                }
+                else
+                {
+                    if (verbose)
+                        Console.WriteLine($"Invalid characteristic {charName}");
+                    retVal += 1;
                 }
             }
             else
             {
-                if (!Console.IsOutputRedirected)
-                    Console.WriteLine("No BLE device connected.");
+                if (verbose)
+                    Console.WriteLine("Please specify characteristic name or # for writing.");
                 retVal += 1;
             }
             return retVal;
@@ -1085,7 +1090,7 @@ namespace BLEConsole
                     // Do we have parameter is in "service/characteristic" format?
                     if (parts.Length == 2)
                     {
-                        string serviceName = Utilities.GetIdByNameOrNumber(_services, parts[0]);
+                        string serviceName = GetIdByNameOrNumber(_services, parts[0]);
                         charName = parts[1];
 
                         // If device is found, connect to device and enumerate all services
@@ -1107,7 +1112,7 @@ namespace BLEConsole
                             }
                             catch (Exception ex)
                             {
-                                if (!Console.IsOutputRedirected)
+                                if (verbose)
                                     Console.WriteLine($"Restricted service. Can't subscribe to characteristics: {ex.Message}");
                                 retVal += 1;
                             }
@@ -1120,7 +1125,7 @@ namespace BLEConsole
                     {
                         if (_selectedService == null)
                         {
-                            if (!Console.IsOutputRedirected)
+                            if (verbose)
                                 Console.WriteLine("No service is selected.");
                             retVal += 1;
                             return retVal;
@@ -1132,7 +1137,7 @@ namespace BLEConsole
                     // Read characteristic
                     if (chars.Count > 0 && !string.IsNullOrEmpty(charName))
                     {
-                        string useName = Utilities.GetIdByNameOrNumber(chars, charName);
+                        string useName = GetIdByNameOrNumber(chars, charName);
                         var attr = chars.FirstOrDefault(c => c.Name.Equals(useName));
                         if (attr != null && attr.characteristic != null)
                         {
@@ -1147,42 +1152,42 @@ namespace BLEConsole
                                 }
                                 else
                                 {
-                                    if (!Console.IsOutputRedirected)
+                                    if (verbose)
                                         Console.WriteLine($"Can't subscribe to characteristic {useName}");
                                     retVal += 1;
                                 }
                             }
                             else
                             {
-                                if (!Console.IsOutputRedirected)
+                                if (verbose)
                                     Console.WriteLine($"Already subscribed to characteristic {useName}");
                                 retVal += 1;
                             }
                         }
                         else
                         {
-                            if (!Console.IsOutputRedirected)
+                            if (verbose)
                                 Console.WriteLine($"Invalid characteristic {useName}");
                             retVal += 1;
                         }
                     }
                     else
                     {
-                        if (!Console.IsOutputRedirected)
+                        if (verbose)
                             Console.WriteLine("Nothing to subscribe, please specify characteristic name or #.");
                         retVal += 1;
                     }
                 }
                 else
                 {
-                    if (!Console.IsOutputRedirected)
+                    if (verbose)
                         Console.WriteLine("Nothing to subscribe, please specify characteristic name or #.");
                     retVal += 1;
                 }
             }
             else
             {
-                if (!Console.IsOutputRedirected)
+                if (verbose)
                     Console.WriteLine("No BLE device connected.");
                 retVal += 1;
             }
@@ -1197,12 +1202,12 @@ namespace BLEConsole
         {
             if (_subscribers.Count == 0)
             {
-                if (!Console.IsOutputRedirected)
+                if (verbose)
                     Console.WriteLine("No subscription for value changes found.");
             }
             else if (string.IsNullOrEmpty(param))
             {
-                if (!Console.IsOutputRedirected)
+                if (verbose)
                     Console.WriteLine("Please specify characteristic name or # (for single subscription) or type \"unsubs all\" to remove all subscriptions");
             }
             // Unsubscribe from all value changed events
@@ -1257,5 +1262,90 @@ namespace BLEConsole
             }
             return null;
         }
+        /// <summary>
+        /// This function is trying to find device or service or attribute by name or number
+        /// </summary>
+        /// <param name="collection">source collection</param>
+        /// <param name="name">name or number to find</param>
+        /// <returns>ID for device, Name for services or attributes</returns>
+        public static string GetIdByNameOrNumber(object collection, string name)
+        {
+            string result = string.Empty;
+
+            // If number is specified, try to open BLE device by specific number
+            if (name[0] == '#')
+            {
+                int devNumber = -1;
+                if (int.TryParse(name.Substring(1), out devNumber))
+                {
+                    // Try to find device ID by number
+                    if (collection is List<DeviceInformation>)
+                    {
+                        if (0 <= devNumber && devNumber < (collection as List<DeviceInformation>).Count)
+                        {
+                            result = (collection as List<DeviceInformation>)[devNumber].Id;
+                        }
+                        else
+                            if (verbose)
+                            Console.WriteLine("Device number {0:00} is not in device list range", devNumber);
+                    }
+                    // for services or attributes
+                    else
+                    {
+                        if (0 <= devNumber && devNumber < (collection as List<BluetoothLEAttributeDisplay>).Count)
+                        {
+                            result = (collection as List<BluetoothLEAttributeDisplay>)[devNumber].Name;
+                        }
+                    }
+                }
+                else
+                    if (verbose)
+                    Console.WriteLine("Invalid device number {0}", name.Substring(1));
+            }
+            // else try to find name
+            else
+            {
+                // ... for devices
+                if (collection is List<DeviceInformation>)
+                {
+                    var foundDevices = (collection as List<DeviceInformation>).Where(d => d.Name.ToLower().StartsWith(name.ToLower()) || d.Id.IndexOf(name.ToLower()) >= 0).ToList(); //match name or part of Id - mac address
+                    if (foundDevices.Count == 0)
+                    {
+                        if (verbose)
+                            Console.WriteLine("Can't connect to {0}.", name);
+                    }
+                    else if (foundDevices.Count == 1)
+                    {
+                        result = foundDevices.First().Id;
+                    }
+                    else
+                    {
+                        if (verbose)
+                            Console.WriteLine("Found multiple devices with names started from {0}. Please provide an exact name.", name);
+                    }
+                }
+                // for services or attributes
+                else
+                {
+                    var foundDispAttrs = (collection as List<BluetoothLEAttributeDisplay>).Where(d => d.Name.ToLower().StartsWith(name.ToLower())).ToList();
+                    if (foundDispAttrs.Count == 0)
+                    {
+                        if (verbose)
+                            Console.WriteLine("No service/characteristic found by name {0}.", name);
+                    }
+                    else if (foundDispAttrs.Count == 1)
+                    {
+                        result = foundDispAttrs.First().Name;
+                    }
+                    else
+                    {
+                        if (verbose)
+                            Console.WriteLine("Found multiple services/characteristic with names started from {0}. Please provide an exact name.", name);
+                    }
+                }
+            }
+            return result;
+        }
     }
+
 }

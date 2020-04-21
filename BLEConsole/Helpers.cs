@@ -368,7 +368,7 @@ namespace BLEConsole
         {
             // Get the short Uuid
             var bytes = uuid.ToByteArray();
-            var shortUuid = (ushort) (bytes[0] | (bytes[1] << 8));
+            var shortUuid = (ushort)(bytes[0] | (bytes[1] << 8));
             return shortUuid;
         }
 
@@ -431,124 +431,31 @@ namespace BLEConsole
         /// <returns></returns>
         public static IBuffer FormatData(string data, DataFormat format)
         {
-            try
+            // For text formats, use CryptographicBuffer
+            if (format == DataFormat.ASCII || format == DataFormat.UTF8)
             {
-                // For text formats, use CryptographicBuffer
-                if (format == DataFormat.ASCII || format == DataFormat.UTF8)
-                {
-                    var sb = new StringBuilder(data);
-                    sb.Replace("\\n", "\n");sb.Replace("\\t", "\t");sb.Replace("\\r", "\r");
-                    data = sb.ToString();
-                    return CryptographicBuffer.ConvertStringToBinary(data, BinaryStringEncoding.Utf8);
-                }
-                else
-                {
-                    string[] values = data.Split(new char[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
-                    byte[] bytes = new byte[values.Length];
-
-                    for (int i = 0; i < values.Length; i++)
-                        bytes[i] = Convert.ToByte(values[i], (format == DataFormat.Dec ? 10 : (format == DataFormat.Hex ? 16 : 2)));
-
-                    var writer = new DataWriter();
-                    writer.ByteOrder = ByteOrder.LittleEndian;
-                    writer.WriteBytes(bytes);
-
-                    return writer.DetachBuffer();
-                }
+                var sb = new StringBuilder(data);
+                sb.Replace("\\n", "\n"); sb.Replace("\\t", "\t"); sb.Replace("\\r", "\r");
+                data = sb.ToString();
+                return CryptographicBuffer.ConvertStringToBinary(data, BinaryStringEncoding.Utf8);
             }
-            catch (Exception error)
-            {
-                Console.WriteLine(error.Message);
-                return null;
-            }
-        }
-
-        /// <summary>
-        /// This function is trying to find device or service or attribute by name or number
-        /// </summary>
-        /// <param name="collection">source collection</param>
-        /// <param name="name">name or number to find</param>
-        /// <returns>ID for device, Name for services or attributes</returns>
-        public static string GetIdByNameOrNumber (object collection, string name)
-        {
-            string result = string.Empty;
-
-            // If number is specified, try to open BLE device by specific number
-            if (name[0] == '#')
-            {
-                int devNumber = -1;
-                if (int.TryParse(name.Substring(1), out devNumber))
-                {
-                    // Try to find device ID by number
-                    if (collection is List<DeviceInformation>)
-                    {
-                        if (0 <= devNumber && devNumber < (collection as List<DeviceInformation>).Count)
-                        {
-                            result = (collection as List<DeviceInformation>)[devNumber].Id;
-                        }
-                        else
-                            if(Console.IsOutputRedirected)
-                                Console.WriteLine("Device number {0:00} is not in device list range", devNumber);
-                    }
-                    // for services or attributes
-                    else
-                    {
-                        if (0 <= devNumber && devNumber < (collection as List<BluetoothLEAttributeDisplay>).Count)
-                        {
-                            result = (collection as List<BluetoothLEAttributeDisplay>)[devNumber].Name;
-                        }
-                    }
-                }
-                else
-                    if (!Console.IsOutputRedirected)
-                        Console.WriteLine("Invalid device number {0}", name.Substring(1));
-            }
-            // else try to find name
             else
-            { 
-                // ... for devices
-                if (collection is List<DeviceInformation>)
-                {
-                    var foundDevices = (collection as List<DeviceInformation>).Where(d => d.Name.ToLower().StartsWith(name.ToLower()) || d.Id.IndexOf(name.ToLower())>=0).ToList(); //match name or part of Id - mac address
-                    if (foundDevices.Count == 0)
-                    {
-                        if(!Console.IsOutputRedirected)
-                            Console.WriteLine("Can't connect to {0}.", name);
-                    }
-                    else if (foundDevices.Count == 1)
-                    {
-                        result = foundDevices.First().Id;
-                    }
-                    else
-                    {
-                        if (!Console.IsOutputRedirected)
-                            Console.WriteLine("Found multiple devices with names started from {0}. Please provide an exact name.", name);
-                    }
-                }
-                // for services or attributes
-                else
-                {
-                    var foundDispAttrs = (collection as List<BluetoothLEAttributeDisplay>).Where(d => d.Name.ToLower().StartsWith(name.ToLower())).ToList();
-                    if (foundDispAttrs.Count == 0)
-                    {
-                        if(Console.IsOutputRedirected)
-                            Console.WriteLine("No service/characteristic found by name {0}.", name);
-                    }
-                    else if (foundDispAttrs.Count == 1)
-                    {
-                        result = foundDispAttrs.First().Name;
-                    }
-                    else
-                    {
-                        if (Console.IsOutputRedirected)
-                            Console.WriteLine("Found multiple services/characteristic with names started from {0}. Please provide an exact name.", name);
-                    }
-                }
-            }
-            return result;
-        }
-    }
+            {
+                string[] values = data.Split(new char[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+                byte[] bytes = new byte[values.Length];
 
+                for (int i = 0; i < values.Length; i++)
+                    bytes[i] = Convert.ToByte(values[i], (format == DataFormat.Dec ? 10 : (format == DataFormat.Hex ? 16 : 2)));
+
+                var writer = new DataWriter();
+                writer.ByteOrder = ByteOrder.LittleEndian;
+                writer.WriteBytes(bytes);
+
+                return writer.DetachBuffer();
+            }
+        }
+
+    }
     public static class TaskExtensions
     {
         public static async Task<TResult> TimeoutAfter<TResult>(this Task<TResult> task, TimeSpan timeout)
