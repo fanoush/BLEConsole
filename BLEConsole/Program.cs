@@ -52,7 +52,7 @@ namespace BLEConsole
         static ManualResetEvent _notifyCompleteEvent = null;
         static ManualResetEvent _delayEvent = null;
         static bool _primed = false;
-
+        static bool verbose = false;
         static TimeSpan _timeout = TimeSpan.FromSeconds(3);
 
         static void Main(string[] args)
@@ -60,7 +60,8 @@ namespace BLEConsole
             // Get app name and version
             var name = Assembly.GetCallingAssembly().GetName();
             _versionInfo = string.Format($"{name.Name} ver. {name.Version.Major:0}.{name.Version.Minor:0}.{name.Version.Build:0}\n");
-            if (!Console.IsInputRedirected) Console.WriteLine(_versionInfo);
+            verbose = !Console.IsInputRedirected;
+            if (verbose) Console.WriteLine(_versionInfo);
 
             // Set Ctrl+Break/Ctrl+C handler
             Console.CancelKeyPress += Console_CancelKeyPress;
@@ -92,7 +93,7 @@ namespace BLEConsole
             // Otherwise, quit the app
             else
             {
-                if (!Console.IsInputRedirected)
+                if (verbose)
                     Console.WriteLine("\nBLEConsole is terminated");
                 e.Cancel = false;
                 _doWork = false;
@@ -123,7 +124,7 @@ namespace BLEConsole
             // Main loop
             while (_doWork)
             {
-                if (!Console.IsInputRedirected && !skipPrompt)
+                if (verbose && !skipPrompt)
                     Console.Write("BLE: ");
 
                 skipPrompt = false;
@@ -342,6 +343,10 @@ namespace BLEConsole
                 case "write":
                     _exitCode += await WriteCharacteristic(parameters);
                     break;
+                case "v":
+                case "verb":
+                    verbose=!verbose;
+                    break;
 
                 case "subs":
                 case "sub":
@@ -372,6 +377,7 @@ namespace BLEConsole
             Console.WriteLine(_versionInfo +
                 "\n  help, ?\t\t\t: show help information\n"+
                 "  quit, q\t\t\t: quit from application\n"+
+                "  verb, v\t\t\t: toggle verbose output (default on when input is console, off when file)\n" +
                 "  list, ls [w]\t\t\t: show available BLE devices\n" +
                 "  open <name> or <#>\t\t: connect to BLE device\n" +
                 "  delay <msec>\t\t\t: pause execution for a certain number of milliseconds\n" +
@@ -647,20 +653,20 @@ namespace BLEConsole
                             CloseDevice();
                         
                         _selectedDevice = await BluetoothLEDevice.FromIdAsync(foundId).AsTask().TimeoutAfter(_timeout);
-                        if (!Console.IsInputRedirected)
+                        if (verbose)
                             Console.WriteLine($"Connecting to {_selectedDevice.Name}.");
 
                         var result = await _selectedDevice.GetGattServicesAsync(BluetoothCacheMode.Uncached);
                         if (result.Status == GattCommunicationStatus.Success)
                         {
-                            if (!Console.IsInputRedirected)
+                            if (verbose)
                                 Console.WriteLine($"Found {result.Services.Count} services:");
 
                             for (int i = 0; i < result.Services.Count; i++)
                             {
                                 var serviceToDisplay = new BluetoothLEAttributeDisplay(result.Services[i]);
                                 _services.Add(serviceToDisplay);
-                                if (!Console.IsInputRedirected)
+                                if (verbose)
                                     Console.WriteLine($"#{i:00}: {_services[i].Name}");
                             }
                         }
@@ -699,7 +705,7 @@ namespace BLEConsole
 
             if (_selectedDevice != null)
             {
-                if (!Console.IsInputRedirected)
+                if (verbose)
                     Console.WriteLine($"Device {_selectedDevice.Name} is disconnected.");
 
                 _services?.ForEach((s) => { s.service?.Dispose(); });
@@ -742,7 +748,7 @@ namespace BLEConsole
                                     characteristics = result.Characteristics;
                                     _selectedService = attr;
                                     _characteristics.Clear();
-                                    if (!Console.IsInputRedirected) Console.WriteLine($"Selected service {attr.Name}.");
+                                    if (verbose) Console.WriteLine($"Selected service {attr.Name}.");
 
                                     if (characteristics.Count > 0)
                                     {
@@ -750,7 +756,7 @@ namespace BLEConsole
                                         {
                                             var charToDisplay = new BluetoothLEAttributeDisplay(characteristics[i]);
                                             _characteristics.Add(charToDisplay);
-                                            if (!Console.IsInputRedirected) Console.WriteLine($"#{i:00}: {charToDisplay.Name}\t{charToDisplay.Chars}");
+                                            if (verbose) Console.WriteLine($"#{i:00}: {charToDisplay.Name}\t{charToDisplay.Chars}");
                                         }
                                     }
                                     else
@@ -1211,8 +1217,10 @@ namespace BLEConsole
             {
                 var newValue = Utilities.FormatValue(args.CharacteristicValue, _dataFormat);
 
-                if (Console.IsInputRedirected) Console.Write($"{newValue}");
-                else Console.Write($"Value changed for {sender.Uuid}: {newValue}\nBLE: ");
+                if (verbose)
+                    Console.Write($"Value changed for {sender.Uuid}: {newValue}\nBLE: ");
+                else
+                    Console.Write($"{newValue}");
                 if (_notifyCompleteEvent != null)
                 {
                     _notifyCompleteEvent.Set();
