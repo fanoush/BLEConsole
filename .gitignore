@@ -3,4 +3,10 @@
 ################################################################################
 
 /.vs/BLEConsole/v15
-/BLEConsole/obj/Debug
+/.vs/BLEConsole/v16
+/.vs
+/BLEConsole/obj
+/BLEConsole/bin
+/packages
+/BLEConsole/BLEConsole.csproj.user
+
