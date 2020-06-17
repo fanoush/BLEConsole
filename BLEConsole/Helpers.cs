@@ -75,26 +75,19 @@ namespace BLEConsole
                     case AttributeType.Service:
                         if (IsSigDefinedUuid(service.Uuid))
                         {
-                            GattNativeServiceUuid serviceName;
-                            if (Enum.TryParse(Utilities.ConvertUuidToShortId(service.Uuid).ToString(), out serviceName))
-                            {
-                                return serviceName.ToString();
-                            }
+                            var shortId=Utilities.ConvertUuidToShortId(service.Uuid);
+                            return $"0x{shortId:X} ({(GattNativeServiceUuid)shortId})";
                         }
                         else
                         {
-                            return "Custom Service: " + service.Uuid;
+                            return service.Uuid.ToString("D");
                         }
                         break;
                     case AttributeType.Characteristic:
                         if (IsSigDefinedUuid(characteristic.Uuid))
                         {
-                            GattNativeCharacteristicUuid characteristicName;
-                            if (Enum.TryParse(Utilities.ConvertUuidToShortId(characteristic.Uuid).ToString(),
-                                out characteristicName))
-                            {
-                                return characteristicName.ToString();
-                            }
+                            var shortId = Utilities.ConvertUuidToShortId(characteristic.Uuid);
+                            return $"0x{shortId:X} ({(GattNativeCharacteristicUuid)shortId})";
                         }
                         else
                         {
@@ -105,7 +98,7 @@ namespace BLEConsole
                                 
                             else
                             {
-                                return "Custom Characteristic: " + characteristic.Uuid;
+                                return characteristic.Uuid.ToString("D");
                             }
                         }
                         break;
@@ -118,6 +111,7 @@ namespace BLEConsole
 
         public AttributeType AttributeDisplayType { get; }
 
+        static Guid BluetoothBaseUuid = new Guid("00000000-0000-1000-8000-00805F9B34FB");
         /// <summary>
         ///     The SIG has a standard base value for Assigned UUIDs. In order to determine if a UUID is SIG defined,
         ///     zero out the unique section and compare the base sections.
@@ -126,8 +120,6 @@ namespace BLEConsole
         /// <returns></returns>
         private static bool IsSigDefinedUuid(Guid uuid)
         {
-            var bluetoothBaseUuid = new Guid("00000000-0000-1000-8000-00805F9B34FB");
-
             var bytes = uuid.ToByteArray();
             // Zero out the first and second bytes
             // Note how each byte gets flipped in a section - 1234 becomes 34 12
@@ -138,7 +130,7 @@ namespace BLEConsole
             bytes[0] = 0;
             bytes[1] = 0;
             var baseUuid = new Guid(bytes);
-            return baseUuid == bluetoothBaseUuid;
+            return baseUuid == BluetoothBaseUuid;
         }
     }
 
