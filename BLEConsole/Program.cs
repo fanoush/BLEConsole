@@ -1321,13 +1321,13 @@ namespace BLEConsole
                     else
                     {
                         if (verbose)
-                            Console.WriteLine("Found multiple devices with names started from {0}. Please provide an exact name.", name);
+                            Console.WriteLine("Found multiple devices for {0}. Please provide an exact name.", name);
                     }
                 }
                 // for services or attributes
                 else
                 {
-                    var foundDispAttrs = (collection as List<BluetoothLEAttributeDisplay>).Where(d => d.Name.ToLower().StartsWith(name.ToLower())).ToList();
+                    var foundDispAttrs = (collection as List<BluetoothLEAttributeDisplay>).Where(d => d.Name.ToLower().IndexOf/*.StartsWith*/(name.ToLower()) >= 0).ToList();
                     if (foundDispAttrs.Count == 0)
                     {
                         if (verbose)
@@ -1340,7 +1340,7 @@ namespace BLEConsole
                     else
                     {
                         if (verbose)
-                            Console.WriteLine("Found multiple services/characteristic with names started from {0}. Please provide an exact name.", name);
+                            Console.WriteLine("Found multiple services/characteristic for {0}. Please provide an exact name.", name);
                     }
                 }
             }
